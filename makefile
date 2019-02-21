@@ -17,8 +17,10 @@ LDLIBS += -ltbb -lOpenCL
 
 ifeq ($(findstring MINGW,$(shell uname)),MINGW)
 LDLIBS := $(subst -lOpenCL,$(shell which OpenCL.dll),$(LDLIBS))
-endif
-
+else ifeq ($(findstring Darwin,$(shell uname)),Darwin)
+LDLIBS := $(subst -lOpenCL,-framework OpenCL,$(LDLIBS))
+LDLIBS := $(subst -lrt,,$(LDLIBS))
+endif 
 all : bin/execute_puzzle bin/create_puzzle_input bin/run_puzzle bin/compare_puzzle_output
 
 lib/libpuzzler.a : $(wildcard provider/*.cpp provider/*.hpp include/puzzler/*.hpp include/puzzler/*/*.hpp)
