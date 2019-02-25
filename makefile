@@ -3,6 +3,7 @@ SHELL=/bin/bash
 CPPFLAGS += -std=c++11 -W -Wall  -g
 CPPFLAGS += -O3
 CPPFLAGS += -I include
+CPPFLAGS += -I OpenCL-Headers/
 
 ifeq ($(OS),Windows_NT)
 LDLIBS += -lws2_32 
@@ -13,7 +14,7 @@ endif
 # These libraries will always be linked in when `libpuzzler.a` is compiled
 # into programs used in assessment. If you don't need them, feel free to
 # comment them out.
-LDFLAGS += -L .
+LDFLAGS += -L . 
 LDLIBS += -ltbb -lOpenCL
 
 ifeq ($(findstring MINGW,$(shell uname)),MINGW)
