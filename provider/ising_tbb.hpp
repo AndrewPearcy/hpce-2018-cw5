@@ -46,12 +46,12 @@ public:
 
         log->Log( puzzler::Log_Debug, [&](std::ostream &dst){
           dst<<"\n";
-          tbb::parallel_for((unsigned) 0, n, [&](unsigned y){
-              tbb::parallel_for((unsigned) 0, n, [&](unsigned  x){
+          for(unsigned y=0; y<n; y++){
+            for(unsigned x=0; x<n; x++){
               dst<<(spins[y*n+x]?"+":" ");
-            });
+            }
             dst<<"\n";
-          });
+          }
         });
       });
       
