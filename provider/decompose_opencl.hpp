@@ -1,6 +1,9 @@
 #ifndef user_decompose_opencl_hpp
 #define user_decompose_opencl_hpp
 
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#define __CL_ENABLE_EXCEPTIONS 
+
 #include "puzzler/puzzles/decompose.hpp"
 #include "tbb/parallel_for.h"
 #include "CL/cl.hpp"
@@ -45,8 +48,7 @@ std::string LoadSource(const char *fileName) const
     unsigned n=pInput->n;
     unsigned rr=n;
     unsigned cc=n;
-    unsigned p=7;
-    size_t matrix_size = rr*cc;
+    uint32_t p=7;
  
  	// OpenCl Code
 	std::vector<cl::Platform> platforms;
@@ -89,9 +91,7 @@ std::string LoadSource(const char *fileName) const
 	
 	cl::Context context(devices);
 	
-	const char *filename = "decompose_kernel.cl";	
-
-	std::string kernelSource=LoadSource(filename);
+	std::string kernelSource=LoadSource("decompose_kernel.cl");
 
 	cl::Program::Sources sources;	// A vector of (data,length) pairs
 	sources.push_back(std::make_pair(kernelSource.c_str(), kernelSource.size()+1));	// push on our single string
@@ -109,24 +109,24 @@ std::string LoadSource(const char *fileName) const
 
 	
     log->LogInfo("Building random matrix");
-    std::vector<uint32_t> matrix(matrix_size);
-    
-    cl::Buffer buffMatrix(context, CL_MEM_WRITE_ONLY, matrix_size);
-    cl::Kernel kernel(program, "kernel_make_bit");
+    std::vector<uint32_t> matrix(rr*cc);
+    uint32_t seed = pInput->seed;
+    size_t buffSize = 4*matrix.size();
+
+    cl::Buffer buffMatrix(context, CL_MEM_READ_WRITE, buffSize);
+    cl::Kernel kernel(program, "kernel_makeBit");
     kernel.setArg(0, buffMatrix);
-    kernel.setArg(1, pInput->seed);
+    kernel.setArg(1, seed);
     kernel.setArg(2, p);
     cl::CommandQueue queue(context, device); 
-    queue.enqueueWriteBuffer(buffMatrix, CL_TRUE, 0, matrix_size, &matrix);
+    queue.enqueueWriteBuffer(buffMatrix, CL_TRUE, 0, buffSize, &matrix[0]);
     cl::NDRange offset(0);
     cl::NDRange globalSize(matrix.size());
     cl::NDRange localSize=cl::NullRange;
-    
+
     queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize);	
     queue.enqueueBarrierWithWaitList();
-    queue.enqueueReadBuffer(buffMatrix, CL_TRUE, 0, matrix_size, &matrix); 
-
-
+    queue.enqueueReadBuffer(buffMatrix, CL_TRUE, 0, buffSize, &matrix[0]); 
     dump(log, Log_Verbose, rr, cc, &matrix[0]);
 
     log->LogInfo("Doing the decomposition");
@@ -139,22 +139,9 @@ std::string LoadSource(const char *fileName) const
       hash += uint64_t(matrix[i])*i;
     });
     pOutput->hash=hash;
-
     log->LogInfo("Finished");
-	}
+}
 
-    uint32_t kernel_make_bit(uint32_t seed, uint32_t input) const
-    {
-      const unsigned P = 7;
-      const uint32_t PRIME32_1  = 2654435761U;
-      const uint32_t PRIME32_2 = 2246822519U;
-      seed += input * PRIME32_2;
-      seed  = (seed<<13) | (seed>>(32-13));
-      seed *= PRIME32_1;
-      return seed % P;
-    }
-
-  void setupOpenCL() {  }
 
 
 };
