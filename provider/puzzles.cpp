@@ -8,6 +8,7 @@
 
 // TODO: include your engine headers
 #include "ising_tbb.hpp"
+#include "integral_tbb.hpp"
 
 void puzzler::PuzzleRegistrar::UserRegisterPuzzles() {
   Register("decompose.ref", std::make_shared<puzzler::DecomposePuzzle>());
@@ -17,7 +18,7 @@ void puzzler::PuzzleRegistrar::UserRegisterPuzzles() {
 
   // TODO: Register more engines!
   Register("ising.tbb", std::make_shared<puzzler::IsingTbbProvider>());
-
+  Register("integral.tbb", std::make_shared<puzzler::IntegralTbbProvider>());
   // Note that you can register the same engine twice under different names, for
   // example you could register the same engine for "ising.tbb" and "ising.opt"
 }
