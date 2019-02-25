@@ -1,15 +1,39 @@
-#ifndef user_decompose_tbb_hpp
-#define user_decompose_tbb_hpp
+#ifndef user_decompose_opencl_hpp
+#define user_decompose_opencl_hpp
 
 #include "puzzler/puzzles/decompose.hpp"
 #include "tbb/parallel_for.h"
+#include "CL/cl.hpp"
+#include <fstream>    
 
 namespace puzzler {
-class DecomposeTbbProvider
+class DecomposeOpenCLProvider
   : public puzzler::DecomposePuzzle
 {
 public:
-  DecomposeTbbProvider()
+  
+std::string LoadSource(const char *fileName) const
+{
+	std::string baseDir="provider/";
+	if(getenv("HPCE_CL_SRC_DIR")){
+		baseDir=getenv("HPCE_CL_SRC_DIR");
+	}
+	
+	std::string fullName=baseDir+"/"+fileName;
+	
+	// Open a read-only binary stream over the file
+	std::ifstream src(fullName, std::ios::in | std::ios::binary);
+	if(!src.is_open())
+		throw std::runtime_error("LoadSource : Couldn't load cl file from '"+fullName+"'.");
+	
+	// Read all characters of the file into a string
+	return std::string(
+		(std::istreambuf_iterator<char>(src)), // Node the extra brackets.
+        std::istreambuf_iterator<char>()
+	);
+} 
+
+  DecomposeOpenCLProvider()
   {}
 
 	virtual void Execute(
@@ -22,8 +46,9 @@ public:
     unsigned rr=n;
     unsigned cc=n;
     unsigned p=7;
-
-  	// OpenCl Code
+    size_t matrix_size = rr*cc;
+ 
+ 	// OpenCl Code
 	std::vector<cl::Platform> platforms;
 	
 	cl::Platform::get(&platforms);
@@ -63,8 +88,10 @@ public:
 	cl::Device device=devices.at(selectedDevice);
 	
 	cl::Context context(devices);
+	
+	const char *filename = "decompose_kernel.cl";	
 
-	std::string kernelSource=LoadSource("decompose_kernel.cl");
+	std::string kernelSource=LoadSource(filename);
 
 	cl::Program::Sources sources;	// A vector of (data,length) pairs
 	sources.push_back(std::make_pair(kernelSource.c_str(), kernelSource.size()+1));	// push on our single string
@@ -81,27 +108,24 @@ public:
 	} 
 
 	
-
-
-
     log->LogInfo("Building random matrix");
-    size_t matrix_size = rr*cc
     std::vector<uint32_t> matrix(matrix_size);
     
     cl::Buffer buffMatrix(context, CL_MEM_WRITE_ONLY, matrix_size);
     cl::Kernel kernel(program, "kernel_make_bit");
-    kernel.setArg(0, pInput->seed) // do we have any args?
+    kernel.setArg(0, buffMatrix);
+    kernel.setArg(1, pInput->seed);
+    kernel.setArg(2, p);
     cl::CommandQueue queue(context, device); 
+    queue.enqueueWriteBuffer(buffMatrix, CL_TRUE, 0, matrix_size, &matrix);
     cl::NDRange offset(0);
     cl::NDRange globalSize(matrix.size());
     cl::NDRange localSize=cl::NullRange;
     
     queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize);	
     queue.enqueueBarrierWithWaitList();
-    
-    queue.enqueueReadBuffer(buffMatrix, CL_TRUE, 0, matrix_size, &matrix[0]); 
+    queue.enqueueReadBuffer(buffMatrix, CL_TRUE, 0, matrix_size, &matrix); 
 
-    kernel_make_bit(pInput->seed);
 
     dump(log, Log_Verbose, rr, cc, &matrix[0]);
 
