@@ -8,6 +8,7 @@
 
 // TODO: include your engine headers
 #include "decompose_tbb.hpp"
+#include "integral_tbb.hpp"
 #include "ising_tbb.hpp"
 #include "rank_tbb.hpp"
 
@@ -19,6 +20,7 @@ void puzzler::PuzzleRegistrar::UserRegisterPuzzles() {
 
   // TODO: Register more engines!
   Register("ising.tbb", std::make_shared<puzzler::IsingTbbProvider>());
+  Register("integral.tbb", std::make_shared<puzzler::IntegralTbbProvider>());
   Register("decompose.tbb", std::make_shared<puzzler::DecomposeTbbProvider>());
   Register("rank.tbb", std::make_shared<puzzler::RankTbbProvider>());
 
