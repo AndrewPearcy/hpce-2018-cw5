@@ -1,5 +1,7 @@
 __constant int D = 3;
 
+// Atomic Add for doubles function implementation 
+// found from https://community.amd.com/thread/203678
 #pragma OPENCL EXTENSION cl_khr_fp64: enable
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics: enable
 double __attribute__((overloadable)) atomic_add(__global double *valq,double delta) {
