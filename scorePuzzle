@@ -74,16 +74,17 @@ done
 # Simple Correctness
 #scorePuzzle rank.opencl 0
 #scorePuzzle rank.tbb 0
-scorePuzzle rank.ref 0
+#scorePuzzle rank.ref 0
 ##########################################################################
 #scorePuzzle rank.ref 0.5
 ##########################################################################
 #scorePuzzle ising.opt 0.5
 ##########################################################################
-scorePuzzle ising.opt 0.5
+#scorePuzzle ising.opt 0.5
 ##########################################################################
-scorePuzzle ising.ref 0.5
+#scorePuzzle ising.ref 0.5
 ##########################################################################
+scorePuzzle ising.opencl 0.5
 
 # Clean up the testing
 rm -rf $WORKDIR
