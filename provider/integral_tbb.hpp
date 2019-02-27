@@ -48,6 +48,29 @@ std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).co
     }
 
 
+	float mpdf(int r, float range, float x[D], const float M[D*D], const float C[D], const float bounds[D]) const
+    {
+      float dx=range/r;
+
+      tbb::atomic<float> acc=1.0f;
+      tbb::parallel_for((unsigned) 0, (unsigned) D, [&](unsigned i){
+        float xt=C[i];
+        for(unsigned j=0; j<D; j++){
+          xt += M[i*D+j] * x[j];
+        }
+        acc = acc * (updf(xt) * dx);
+      });
+
+      tbb::parallel_for((unsigned) 0, (unsigned)D, [&](unsigned i){
+        if(x[i] > bounds[i]){
+          acc=0;
+        }
+      });
+
+      return acc;
+    }
+
+
 };
 }; //end namespace puzzler
 #endif
