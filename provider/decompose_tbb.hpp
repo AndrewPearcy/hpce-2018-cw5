@@ -3,7 +3,7 @@
 
 #include "puzzler/puzzles/decompose.hpp"
 #include "tbb/parallel_for.h"
-
+#include <chrono>
 namespace puzzler {
 class DecomposeTbbProvider
   : public puzzler::DecomposePuzzle
@@ -18,6 +18,7 @@ public:
 				puzzler::DecomposeOutput *pOutput
 			   ) const override
 	{
+    auto begin = std::chrono::high_resolution_clock::now();
     unsigned n=pInput->n;
     unsigned rr=n;
     unsigned cc=n;
@@ -42,6 +43,8 @@ public:
     pOutput->hash=hash;
 
     log->LogInfo("Finished");
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() << "us" << std::endl;
 	}
 
 };

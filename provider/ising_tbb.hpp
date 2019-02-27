@@ -2,7 +2,7 @@
 #define user_ising_tbb_hpp
 
 #include "puzzler/puzzles/ising.hpp"
-
+#include <chrono>
 #include "tbb/parallel_for.h"
 namespace puzzler {
 class IsingTbbProvider
@@ -18,6 +18,7 @@ public:
 				 puzzler::IsingOutput *pOutput
 			   ) const override
 	{
+      auto begin = std::chrono::high_resolution_clock::now();
       log->LogInfo("Building world");
       unsigned n=pInput->n;
       uint32_t prob=pInput->prob;
@@ -57,6 +58,8 @@ public:
       
       pOutput->history=stats;
       log->LogInfo("Finished");
+      auto end = std::chrono::high_resolution_clock::now();
+std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() << "ns" << std::endl;
     }
 
 };

@@ -3,6 +3,8 @@
 
 #include "puzzler/puzzles/integral.hpp"
 #include "tbb/parallel_for.h"
+#include <chrono>
+
 namespace puzzler {
 class IntegralTbbProvider
   : public puzzler::IntegralPuzzle
@@ -17,13 +19,12 @@ public:
 				puzzler::IntegralOutput *output
 			   ) const override
 	{
-
+      auto begin = std::chrono::high_resolution_clock::now();
       unsigned r=input->resolution;
 
       const float range=12;
 
       std::vector<double> accumulators(r*r*r, 0.0f);
-//      double acc=0;
       tbb::parallel_for((unsigned) 0, r, [&](unsigned i1){
 	for(unsigned i2=0; i2<r; i2++){
 	  for(unsigned i3=0; i3<r; i3++){
@@ -42,6 +43,8 @@ public:
       }
       log->LogInfo("Integral = %g", acc);
       output->value=acc;
+      auto end = std::chrono::high_resolution_clock::now();
+std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count() << "ms" << std::endl;
     }
 
 

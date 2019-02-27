@@ -2,7 +2,7 @@
 #define user_rank_tbb_hpp
 
 #include "puzzler/puzzles/rank.hpp"
-
+#include <chrono>
 #include "tbb/parallel_for.h"
 
 namespace puzzler{
@@ -19,6 +19,7 @@ public:
 				puzzler::RankOutput *pOutput
 			   ) const override
 	{
+      auto begin = std::chrono::high_resolution_clock::now();
       const std::vector<std::vector<uint32_t> > &edges=pInput->edges;
       float tol=pInput->tol;
       unsigned n=edges.size();
@@ -38,6 +39,8 @@ public:
       pOutput->ranks= (std::vector<float>) curr;
       
       log->LogInfo("Finished");
+      auto end = std::chrono::high_resolution_clock::now();
+      std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() << "ns" << std::endl;
 	}
 
 

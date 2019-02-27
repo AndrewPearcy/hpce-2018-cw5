@@ -6,7 +6,7 @@
 #include <vector>
 #include <climits>
 #include <cassert>
-
+#include <chrono>
 #include "puzzler/core/puzzle.hpp"
 
 namespace puzzler
@@ -133,7 +133,10 @@ namespace puzzler
       RankOutput *output
       ) const {
       log->LogInfo("Using ReferenceExecute to implement Execute. Should this be overriden?");
+      auto begin = std::chrono::high_resolution_clock::now();
       ReferenceExecute(log, input, output); 
+      auto end = std::chrono::high_resolution_clock::now();
+      std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count() << "ms" << std::endl;
     }
 
   public:
