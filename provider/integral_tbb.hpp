@@ -47,7 +47,7 @@ public:
 std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count() << "ms" << std::endl;
     }
 
-
+/*
 	float mpdf(int r, float range, float x[D], const float M[D*D], const float C[D], const float bounds[D]) const
     {
       float dx=range/r;
@@ -69,7 +69,29 @@ std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).co
 
       return acc;
     }
+*/
 
+ float mpdf(int r, float range, float x[D], const float M[D*D], const float C[D], const float bounds[D]) const
+    {
+      float dx=range/r;
+
+      float acc=1.0f;
+      for(unsigned i=0; i<D; i++){
+        float xt=C[i];
+        for(unsigned j= 0; j<D; j++){
+          xt += M[i*D+j] * x[j];
+        }
+        acc *= updf(xt) * dx;
+      }
+
+      for(unsigned i=0; i<D;i++){
+        if(x[i] > bounds[i]){
+          acc=0;
+        }
+      }
+
+      return acc;
+    }
 
 };
 }; //end namespace puzzler
