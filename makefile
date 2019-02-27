@@ -5,9 +5,10 @@ CPPFLAGS += -O3
 CPPFLAGS += -I include
 CPPFLAGS += -I OpenCL-Headers/
 
+
 ifeq ($(OS),Windows_NT)
 LDLIBS += -lws2_32 
-else
+	else
 LDLIBS += -lrt
 endif
 
@@ -15,7 +16,8 @@ endif
 # into programs used in assessment. If you don't need them, feel free to
 # comment them out.
 LDFLAGS += -L . 
-LDLIBS += -ltbb -lOpenCL
+#LDFLAGS += -L /vol/cuda/8.0.61/lib64 -lOpenCL
+LDLIBS += -ltbb -lOpenCL 
 
 ifeq ($(findstring MINGW,$(shell uname)),MINGW)
 LDLIBS := $(subst -lOpenCL,$(shell which OpenCL.dll),$(LDLIBS))

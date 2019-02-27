@@ -4,6 +4,7 @@ CPPFLAGS += -std=c++11 -W -Wall  -g
 CPPFLAGS += -O3 -DNDEBUG=1
 CPPFLAGS += -I ../include
 CPPFLAGS += -I ../OpenCL-Headers
+#CPPFLAGS += -I /vol/cuda/8.0.61/include
 CPPFLAGS += -Wno-unused-parameter -Wno-unused-variable
 
 # Useful for profiling
