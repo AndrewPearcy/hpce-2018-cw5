@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Parse input test type
+if [ $# -eq 0 ]
+  then
+    TESTTYPE="quick"
+fi
+TESTTYPE=$1
+
+WORKDIR=".testData"
+TESTCNT=0
+TESTPASS=0
+
+# Create test artefact directory
+mkdir $WORKDIR
+
+# Tests the correctness of a given puzzle against reference
+# Arguments:
+#   0) Engine-name
+#   1) Scale
+function testPuzzle()
+{
+  # Input parameter parsing
+  local __engine=$1
+  local __scale=$2
+
+  # Determine puzzle name to check ref
+  local __puzzle=${__engine%%.*}
+
+  echo "Test [$TESTCNT]: ${__engine} ${__scale}"
+
+  # Execute testing
+  #bin/create_puzzle_input ${__puzzle} ${__scale} 0 > ${WORKDIR}/${__puzzle}.${__scale}.input 2> /dev/null
+  #cat ${WORKDIR}/${__puzzle}.${__scale}.input | bin/execute_puzzle "ref" 0 > ${WORKDIR}/${__puzzle}.${__scale}.ref 2> /dev/null
+  #cat ${WORKDIR}/${__puzzle}.${__scale}.input | bin/execute_puzzle ${__engine} 0 > ${WORKDIR}/${__puzzle}.${__scale}.${__engine}.got 2> /dev/null
+  #bin/compare_puzzle_output ${WORKDIR}/${__puzzle}.${__scale}.input ${WORKDIR}/${__puzzle}.${__scale}.ref ${WORKDIR}/${__puzzle}.${__scale}.${__engine}.got 0 2> /dev/null
+  bin/run_puzzle ${__engine} ${__scale} 0 2&>1 /dev/null
+
+  # Parse the exit code of the previous command
+  if [[ $? -ne 0 ]] ; then
+    >&2 echo "Test [$TESTCNT]: FAILURE"
+  else
+    TESTPASS=$((TESTPASS+1))
+    echo "Test [$TESTCNT]: SUCCESS"
+  fi
+
+  TESTCNT=$((TESTCNT+1))
+  echo ""
+}
+
+# Simple Correctness
+##########################################################################
+testPuzzle ising.tbb 8
+##########################################################################
+testPuzzle ising.opt 8
+##########################################################################
+testPuzzle ising.opencl 8
+##########################################################################
+testPuzzle decompose.tbb 8
+##########################################################################
+testPuzzle decompose.opt 8
+##########################################################################
+testPuzzle decompose.opencl 8
+##########################################################################
+testPuzzle rank.tbb 8
+##########################################################################
+testPuzzle rank.opencl 50
+##########################################################################
+testPuzzle rank.opt 50
+##########################################################################
+testPuzzle integral.tbb 8
+##########################################################################
+testPuzzle integral.opt 8
+##########################################################################
+testPuzzle integral.opencl 8
+##########################################################################
+
+
+# Big Bulky test
+##########################################################################
+testPuzzle ising.tbb 64
+##########################################################################
+testPuzzle ising.opencl 64
+##########################################################################
+testPuzzle ising.opt 64
+##########################################################################
+testPuzzle decompose.tbb 256
+##########################################################################
+testPuzzle decompose.opt 256
+##########################################################################
+testPuzzle decompose.opencl 256
+##########################################################################
+testPuzzle rank.tbb 256
+##########################################################################
+testPuzzle rank.opencl 256
+##########################################################################
+testPuzzle rank.opt 256
+##########################################################################
+testPuzzle integral.tbb 256
+##########################################################################
+testPuzzle integral.opencl 256
+##########################################################################
+testPuzzle integral.opt 256
+##########################################################################
+
+if [[ $TESTTYPE = "verbose" ]]; then
+# Medium Hardcore tests
+##########################################################################
+testPuzzle ising.opt 330
+##########################################################################
+testPuzzle decompose.opt 2400
+##########################################################################
+testPuzzle rank.opt 10000
+##########################################################################
+testPuzzle integral.opt 1000
+##########################################################################
+
+# Maximum Hardcore tests
+##########################################################################
+testPuzzle ising.opt 665
+##########################################################################
+testPuzzle decompose.opt 4875
+##########################################################################
+testPuzzle rank.opt 9120450
+##########################################################################
+testPuzzle integral.opt 3465
+##########################################################################
+fi
+
+echo "Passed $TESTPASS out of $TESTCNT tests"
+
+# Clean up the testing
+rm -rf $WORKDIR
