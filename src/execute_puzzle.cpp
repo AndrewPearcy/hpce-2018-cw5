@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     auto end = std::chrono::high_resolution_clock::now();
     std::cout
         << "TIME: "
-        << srd::chrono::duration<double, std::milli>(end - start).count() / 1000
+        << std::chrono::duration<double, std::milli>(end - start).count() / 1000
         << std::endl;
 
     {
