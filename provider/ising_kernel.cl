@@ -18,10 +18,7 @@ __constant uint hfinal(uint acc)
 
 
 __constant uint hround(uint acc, uint data)
-{
-  acc += data * 2246822519U;
-  acc  = (acc<<13) | (acc>>(32-13));
-  return acc * 2654435761U;
+{ acc += data * 2246822519U; acc  = (acc<<13) | (acc>>(32-13)); return acc * 2654435761U;
 }
 
 __constant uint hrng(uint seed, uint group, uint iter, uint pos)
@@ -91,4 +88,16 @@ __constant __kernel void kernel_create_clusters(unsigned n,
      cluster[y_index+x]=curr;
      *finished=false;
    }
+}
+
+__constant __kernel void kernel_flip_clusters(uint seed, unsigned step,
+                                              __global unsigned *clusters,
+                                              __global int *spins)
+{
+  unsigned i = get_global_id(0);
+
+  unsigned cluster=clusters[i];
+  if(hrng(seed, rng_group_flip, step, cluster) >> 31){
+    spins[i] ^= 1;
+  }
 }

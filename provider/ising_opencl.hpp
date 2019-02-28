@@ -252,6 +252,69 @@ public:
     log->LogVerbose("    diameter %u", diameter);
   }
 
+  void flip_clusters(ILog *log, unsigned n, uint32_t seed, unsigned step, unsigned *clusters, int *spins) const
+  {
+    log->LogVerbose("  flip_clusters %u", step);
+
+    cl::Kernel kernel(program, "kernel_flip_clusters");
+
+    unsigned vector_size = n*n;
+    size_t buffClusters_size = sizeof(unsigned) * vector_size;
+    cl::Buffer buffClusters(context, CL_MEM_READ_ONLY, buffClusters_size);
+    size_t buffSpins_size = sizeof(int) * vector_size;
+    cl::Buffer buffSpins(context, CL_MEM_WRITE_ONLY, buffSpins_size);
+
+    cl::Event evClustersCopied;
+    queue.enqueueWriteBuffer(buffClusters, CL_FALSE, 0, buffClusters_size, clusters, NULL, &evClustersCopied);
+    cl::Event evSpinsCopied;
+    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buffSpins_size, spins, NULL, &evSpinsCopied);
+
+    cl::NDRange offset(0);
+    cl::NDRange globalSize(vector_size);
+    cl::NDRange localSize=cl::NullRange;
+
+    kernel.setArg(0, seed);
+    kernel.setArg(1, step);
+    kernel.setArg(2, buffClusters);
+    kernel.setArg(3, buffSpins);
+
+    std::vector<cl::Event> kernelDependencies{evClustersCopied, evSpinsCopied};
+    cl::Event evExecutedKernel;
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, &kernelDependencies, &evExecutedKernel);
+    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
+    queue.enqueueReadBuffer(buffSpins, CL_TRUE, 0, buffSpins_size, spins, &copyBackDependencies);
+
+    /*
+    for(unsigned i=0; i<n*n; i++){
+      unsigned cluster=clusters[i];
+      if(hrng(seed, rng_group_flip, step, cluster) >> 31){
+        spins[i] ^= 1;
+      }
+    }
+    */
+  }
+
+  void count_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
+                          const unsigned *clusters, unsigned *counts, unsigned &nClusters) const
+  {
+    log->LogVerbose("  count_clusters %u", step);
+
+    for(unsigned i=0; i<n*n; i++){
+      counts[i]=0;
+    }
+    for(unsigned i=0; i<n*n; i++){
+      counts[clusters[i]]++;
+    }
+
+    nClusters=0;
+    for(unsigned i=0; i<n*n; i++){
+      if(counts[i]){
+        nClusters++;
+      }
+    }
+  }
+
+
 	virtual void Execute(
 			   puzzler::ILog *log,
 			   const puzzler::IsingInput *pInput,
@@ -276,10 +339,10 @@ public:
 
       for(unsigned i=0; i<n; i++){
         log->LogVerbose("  Iteration %u", i);
-        create_bonds(   log, n, seed, i, prob, &spins[0], &up_down[0], &left_right[0]);
+        create_bonds(log, n, seed, i, prob, &spins[0], &up_down[0], &left_right[0]);
         create_clusters(log,  n, seed, i, &up_down[0], &left_right[0], &clusters[0]);
-        flip_clusters(  log,  n, seed, i, &clusters[0], &spins[0]);
-        count_clusters( log,  n, seed, i, &clusters[0], &counts[0], stats[i]);
+        flip_clusters(log,  n, seed, i, &clusters[0], &spins[0]);
+        count_clusters(log,  n, seed, i, &clusters[0], &counts[0], stats[i]);
         log->LogVerbose("  clusters count is %u", stats[i]);
 
         log->Log( Log_Debug, [&](std::ostream &dst){
