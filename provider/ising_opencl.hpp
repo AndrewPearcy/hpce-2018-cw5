@@ -105,7 +105,7 @@ public:
 
     cl::Kernel create_bonds_kernel(program, "kernel_create_bonds");
     
-    unsigned vector_size = n*n;
+    unsigned vector_size=n*n;
     size_t buffSpins_size = sizeof(int) * vector_size;
     cl::Buffer buffSpins(context, CL_MEM_READ_ONLY, buffSpins_size);
     size_t buffUp_Down_size = sizeof(int) * vector_size;
@@ -170,7 +170,7 @@ public:
   {
     log->LogVerbose("  create_clusters %u", step);
 
-    unsigned vector_size = n*n;
+    unsigned vector_size=n*n;
     tbb::parallel_for((unsigned) 0, vector_size, [&](unsigned i){
       cluster[i]=i;
     });
@@ -258,7 +258,7 @@ public:
 
     cl::Kernel kernel(program, "kernel_flip_clusters");
 
-    unsigned vector_size = n*n;
+    unsigned vector_size=n*n;
     size_t buffClusters_size = sizeof(unsigned) * vector_size;
     cl::Buffer buffClusters(context, CL_MEM_READ_ONLY, buffClusters_size);
     size_t buffSpins_size = sizeof(int) * vector_size;
@@ -299,19 +299,53 @@ public:
   {
     log->LogVerbose("  count_clusters %u", step);
 
-    for(unsigned i=0; i<n*n; i++){
-      counts[i]=0;
-    }
-    for(unsigned i=0; i<n*n; i++){
-      counts[clusters[i]]++;
-    }
+    /*
+    tbb::parallel_for((unsigned) 0, n*n, [&](unsigned i){
+      counts[i]=0; 
+    });
+    */
+
+    cl::Kernel kernel(program, "kernel_nClusters");
 
     nClusters=0;
+    size_t buff_size = sizeof(unsigned) * n*n;
+    cl::Buffer buffClusters(context, CL_MEM_READ_ONLY, buff_size);
+    cl::Buffer buffCounts(context, CL_MEM_READ_ONLY, buff_size);
+    cl::Buffer buffNClusters(context, CL_MEM_WRITE_ONLY, sizeof(unsigned));
+
+    kernel.setArg(0, buffClusters);
+    kernel.setArg(1, buffCounts);
+    kernel.setArg(2, buffNClusters);
+
+    cl::Event evCopiedClusters;
+    queue.enqueueWriteBuffer(buffClusters, CL_FALSE, 0, buff_size, clusters, NULL, &evCopiedClusters);
+    cl::Event evCopiedCounts;
+    queue.enqueueWriteBuffer(buffCounts, CL_FALSE, 0, buff_size, counts, NULL, &evCopiedCounts);
+    cl::Event evCopiedNClusters;
+    queue.enqueueWriteBuffer(buffNClusters, CL_FALSE, 0, sizeof(unsigned), &nClusters, NULL, &evCopiedNClusters);
+    
+    cl::NDRange offset(0);
+    cl::NDRange globalSize(n*n);
+    cl::NDRange localSize=cl::NullRange;
+
+    std::vector<cl::Event> kernelDependencies{evCopiedClusters, evCopiedCounts, evCopiedNClusters};
+    cl::Event evExecutedKernel;
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize,
+                                &kernelDependencies, &evExecutedKernel);
+    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
+    queue.enqueueReadBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters, &copyBackDependencies);
+
+    /*
+    for(unsigned i=0; i<n*n; i++){
+      nClusters += !counts[clusters[i]]++ ? 1 : 0;
+    }
+    
     for(unsigned i=0; i<n*n; i++){
       if(counts[i]){
         nClusters++;
       }
     }
+    */
   }
 
 
@@ -329,7 +363,7 @@ public:
       std::vector<int> left_right(n*n);
       std::vector<int> up_down(n*n);
       std::vector<unsigned> clusters(n*n);
-      std::vector<unsigned> counts(n*n);
+      std::vector<unsigned> counts(n*n, 0);
       for(unsigned i=0; i<n*n; i++){
         spins[i]=hrng(seed, rng_group_init, 0, i) & 1;
       }

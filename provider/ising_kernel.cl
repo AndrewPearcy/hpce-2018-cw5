@@ -101,3 +101,13 @@ __constant __kernel void kernel_flip_clusters(uint seed, unsigned step,
     spins[i] ^= 1;
   }
 }
+
+__constant __kernel void kernel_nClusters(__global unsigned *clusters,
+                                          __global unsigned *counts,
+                                          __global unsigned *nClusters)
+{
+  unsigned i = get_global_id(0);
+  if(!atomic_add(&counts[clusters[i]],(unsigned) 1)){
+    atomic_add(nClusters, (unsigned) 1);
+  }
+}
