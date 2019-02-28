@@ -2,6 +2,7 @@
 #define user_ising_opencl_hpp
 
 #include "puzzler/puzzles/ising.hpp"
+#include "tbb/parallel_for.h"
 
 namespace puzzler{
 class IsingOpenCLProvider
@@ -99,70 +100,157 @@ public:
   void create_bonds(ILog *log, unsigned n, uint32_t seed, 
                     unsigned step,  uint32_t prob, 
                     const int *spins, int *up_down, int *left_right) const 
-    {
-      log->LogVerbose("  create_bonds %u", step);
+  {
+    log->LogVerbose("  create_bonds %u", step);
 
-      cl::Kernel create_bonds_kernel(program, "kernel_create_bonds");
+    cl::Kernel create_bonds_kernel(program, "kernel_create_bonds");
     
-      unsigned vector_size = n*n;
-      size_t buffSpins_size = sizeof(int) * vector_size;
-      cl::Buffer buffSpins(context, CL_MEM_READ_ONLY, buffSpins_size);
-      size_t buffUp_Down_size = sizeof(int) * vector_size;
-      cl::Buffer buffUp_Down(context, CL_MEM_WRITE_ONLY, buffUp_Down_size);
-      size_t buffLeft_Right_size = sizeof(int) * vector_size;
-      cl::Buffer buffLeft_Right(context, CL_MEM_WRITE_ONLY, buffLeft_Right_size);
+    unsigned vector_size = n*n;
+    size_t buffSpins_size = sizeof(int) * vector_size;
+    cl::Buffer buffSpins(context, CL_MEM_READ_ONLY, buffSpins_size);
+    size_t buffUp_Down_size = sizeof(int) * vector_size;
+    cl::Buffer buffUp_Down(context, CL_MEM_WRITE_ONLY, buffUp_Down_size);
+    size_t buffLeft_Right_size = sizeof(int) * vector_size;
+    cl::Buffer buffLeft_Right(context, CL_MEM_WRITE_ONLY, buffLeft_Right_size);
 
-      create_bonds_kernel.setArg(0, n);
-      create_bonds_kernel.setArg(1, seed);
-      create_bonds_kernel.setArg(2, step);
-      create_bonds_kernel.setArg(3, prob);
-      create_bonds_kernel.setArg(4, buffSpins);
-      create_bonds_kernel.setArg(5, buffUp_Down);
-      create_bonds_kernel.setArg(6, buffLeft_Right);
+    create_bonds_kernel.setArg(0, n);
+    create_bonds_kernel.setArg(1, seed);
+    create_bonds_kernel.setArg(2, step);
+    create_bonds_kernel.setArg(3, prob);
+    create_bonds_kernel.setArg(4, buffSpins);
+    create_bonds_kernel.setArg(5, buffUp_Down);
+    create_bonds_kernel.setArg(6, buffLeft_Right);
 
-      cl::Event evCopiedSpins;
-      queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buffSpins_size, spins, NULL, &evCopiedSpins);
-      cl::Event evCopiedUp_Down;
-      queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buffUp_Down_size, up_down, NULL, &evCopiedUp_Down);
-      cl::Event evCopiedLeft_Right;
-      queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buffLeft_Right_size, 
-                                left_right, NULL, &evCopiedLeft_Right);
+    cl::Event evCopiedSpins;
+    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buffSpins_size, spins, NULL, &evCopiedSpins);
+    cl::Event evCopiedUp_Down;
+    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buffUp_Down_size, up_down, NULL, &evCopiedUp_Down);
+    cl::Event evCopiedLeft_Right;
+    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buffLeft_Right_size, 
+                              left_right, NULL, &evCopiedLeft_Right);
 
-      cl::NDRange offset(0,0);
-      cl::NDRange globalSize(n,n);
-      cl::NDRange localSize=cl::NullRange;
-      
+    cl::NDRange offset(0,0);
+    cl::NDRange globalSize(n,n);
+    cl::NDRange localSize=cl::NullRange;
+    
 
-      std::vector<cl::Event> kernelDependencies{evCopiedSpins, evCopiedUp_Down, evCopiedLeft_Right};
+    std::vector<cl::Event> kernelDependencies{evCopiedSpins, evCopiedUp_Down, evCopiedLeft_Right};
+    cl::Event evExecutedKernel;
+    queue.enqueueNDRangeKernel(create_bonds_kernel, offset, globalSize, localSize,
+                                &kernelDependencies, &evExecutedKernel);
+    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
+    queue.enqueueReadBuffer(buffUp_Down, CL_TRUE, 0, buffUp_Down_size, up_down, &copyBackDependencies);
+    queue.enqueueReadBuffer(buffLeft_Right, CL_TRUE, 0, buffLeft_Right_size, left_right); 
+
+    /*
+    for(unsigned y=0; y<n; y++){
+      for(unsigned x=0; x<n; x++){
+        bool sC=spins[y*n+x];
+
+        bool sU=spins[ ((y+1)%n)*n + x ];
+        if(sC!=sU){
+          up_down[y*n+x]=0;
+        }else{
+          up_down[y*n+x]=hrng(seed, rng_group_bond_ud, step, y*n+x) < prob;
+        }
+
+        bool sR=spins[ y*n + (x+1)%n ];
+        if(sC!=sR){
+          left_right[y*n+x]=0;
+        }else{
+          left_right[y*n+x]=hrng(seed, rng_group_bond_lr, step, y*n+x) < prob;
+        }
+      }
+    }
+    */
+  }
+
+  void create_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
+                        const int *up_down, const int *left_right, unsigned *cluster) const
+  {
+    log->LogVerbose("  create_clusters %u", step);
+
+    unsigned vector_size = n*n;
+    tbb::parallel_for((unsigned) 0, vector_size, [&](unsigned i){
+      cluster[i]=i;
+    });
+
+    cl::Kernel kernel(program, "kernel_create_clusters");
+    size_t buffUp_Down_size = sizeof(int) * vector_size;
+    cl::Buffer buffUp_Down(context, CL_MEM_READ_ONLY, buffUp_Down_size);
+    size_t buffLeft_Right_size = sizeof(int) * vector_size;
+    cl::Buffer buffLeft_Right(context, CL_MEM_READ_ONLY, buffLeft_Right_size);
+    size_t buffCluster_size = sizeof(unsigned) * vector_size;
+    cl::Buffer buffCluster(context, CL_MEM_READ_WRITE, buffCluster_size);
+    size_t buffFinished_size = sizeof(bool);
+    cl::Buffer buffFinished(context, CL_MEM_WRITE_ONLY, buffFinished_size);
+
+    cl::Event evCopiedUp_Down;
+    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buffUp_Down_size, up_down, NULL, &evCopiedUp_Down);
+    cl::Event evCopiedLeft_Right;
+    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buffLeft_Right_size,
+                              left_right, NULL, &evCopiedLeft_Right);
+
+    cl::NDRange offset(0,0);
+    cl::NDRange globalSize(n,n);
+    cl::NDRange localSize=cl::NullRange;
+
+
+    kernel.setArg(0, n);
+    kernel.setArg(1, buffUp_Down);
+    kernel.setArg(2, buffLeft_Right);
+
+    bool finished=false;
+    unsigned diameter=0;
+    while(!finished){
+      diameter++;
+      finished=true;
+
+
+      kernel.setArg(3, buffCluster);
+      kernel.setArg(4, buffFinished);
+
+      cl::Event evCopiedCluster;
+      queue.enqueueWriteBuffer(buffCluster, CL_FALSE, 0, buffCluster_size, cluster, NULL, &evCopiedCluster);
+      cl::Event evCopiedFinished;
+      queue.enqueueWriteBuffer(buffFinished, CL_FALSE, 0, buffFinished_size, &finished, NULL, &evCopiedFinished);
+
+      std::vector<cl::Event> kernelDependencies{evCopiedUp_Down, evCopiedLeft_Right, 
+                                                evCopiedCluster, evCopiedFinished};
       cl::Event evExecutedKernel;
-      queue.enqueueNDRangeKernel(create_bonds_kernel, offset, globalSize, localSize,
-                                  &kernelDependencies, &evExecutedKernel);
+      queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, &kernelDependencies, &evExecutedKernel);
       std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-      queue.enqueueReadBuffer(buffUp_Down, CL_TRUE, 0, buffUp_Down_size, up_down, &copyBackDependencies);
-      queue.enqueueReadBuffer(buffLeft_Right, CL_TRUE, 0, buffLeft_Right_size, left_right); 
+      queue.enqueueReadBuffer(buffCluster, CL_TRUE, 0, buffCluster_size, cluster, &copyBackDependencies);
+      queue.enqueueReadBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished);
+
 
       /*
       for(unsigned y=0; y<n; y++){
         for(unsigned x=0; x<n; x++){
-          bool sC=spins[y*n+x];
-
-          bool sU=spins[ ((y+1)%n)*n + x ];
-          if(sC!=sU){
-            up_down[y*n+x]=0;
-          }else{
-            up_down[y*n+x]=hrng(seed, rng_group_bond_ud, step, y*n+x) < prob;
+          unsigned prev=cluster[y*n+x];
+          unsigned curr=prev;
+          if(left_right[y*n+x]){
+            curr=std::min(curr, cluster[y*n+(x+1)%n]);
           }
-
-          bool sR=spins[ y*n + (x+1)%n ];
-          if(sC!=sR){
-            left_right[y*n+x]=0;
-          }else{
-            left_right[y*n+x]=hrng(seed, rng_group_bond_lr, step, y*n+x) < prob;
+          if(left_right[y*n+(x+n-1)%n]){
+            curr=std::min(curr, cluster[y*n+(x+n-1)%n]);
+          }
+          if(up_down[y*n+x]){
+            curr=std::min(curr, cluster[ ((y+1)%n)*n+x]);
+          }
+          if(up_down[((y+n-1)%n)*n+x]){
+            curr=std::min(curr, cluster[ ((y+n-1)%n)*n+x]);
+          }
+          if(curr!=prev){
+            cluster[y*n+x]=curr;
+            finished=false;
           }
         }
       }
       */
     }
+    log->LogVerbose("    diameter %u", diameter);
+  }
 
 	virtual void Execute(
 			   puzzler::ILog *log,

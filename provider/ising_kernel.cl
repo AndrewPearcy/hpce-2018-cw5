@@ -61,3 +61,34 @@ __constant __kernel void kernel_create_bonds(unsigned n, uint seed,
     left_right[y_index+x]=hrng(seed, rng_group_bond_lr, step, y*n+x) < prob;
   }
 }
+
+__constant __kernel void kernel_create_clusters(unsigned n,
+                                            __global int *up_down,
+                                            __global int *left_right,
+                                            __global unsigned *cluster,
+                                            __global bool *finished) {
+
+  unsigned y = get_global_id(0);
+  unsigned x = get_global_id(1);
+
+  unsigned y_index = y * n;
+
+  unsigned prev=cluster[y_index+x];
+  unsigned curr=prev;
+  if(left_right[y_index+x]){
+     curr=min(curr, cluster[y_index+(x+1)%n]);
+   }
+   if(left_right[y*n+(x+n-1)%n]){
+     curr=min(curr, cluster[y_index+(x+n-1)%n]);
+   }
+   if(up_down[y*n+x]){
+     curr=min(curr, cluster[ ((y+1)%n)*n+x]);
+   }
+   if(up_down[((y+n-1)%n)*n+x]){
+     curr=min(curr, cluster[ ((y+n-1)%n)*n+x]);
+   }
+   if(curr!=prev){
+     cluster[y_index+x]=curr;
+     *finished=false;
+   }
+}
