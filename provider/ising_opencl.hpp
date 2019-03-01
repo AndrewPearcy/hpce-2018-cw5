@@ -30,10 +30,18 @@ public:
 	  );
   }
 
+  mutable size_t vector_size;
+  mutable size_t buff_size;
 
   cl::Program program;
   cl::Context context;
   cl::CommandQueue queue;
+
+  mutable cl::Buffer buffSpins;
+  mutable cl::Buffer buffUp_Down;
+  mutable cl::Buffer buffLeft_Right;
+  mutable cl::Buffer buffClusters;
+  mutable cl::Buffer buffCounts;
 
   IsingOpenCLProvider()
   {
@@ -106,12 +114,6 @@ public:
     cl::Kernel create_bonds_kernel(program, "kernel_create_bonds");
     
     unsigned vector_size=n*n;
-    size_t buffSpins_size = sizeof(int) * vector_size;
-    cl::Buffer buffSpins(context, CL_MEM_READ_ONLY, buffSpins_size);
-    size_t buffUp_Down_size = sizeof(int) * vector_size;
-    cl::Buffer buffUp_Down(context, CL_MEM_WRITE_ONLY, buffUp_Down_size);
-    size_t buffLeft_Right_size = sizeof(int) * vector_size;
-    cl::Buffer buffLeft_Right(context, CL_MEM_WRITE_ONLY, buffLeft_Right_size);
 
     create_bonds_kernel.setArg(0, n);
     create_bonds_kernel.setArg(1, seed);
@@ -122,11 +124,11 @@ public:
     create_bonds_kernel.setArg(6, buffLeft_Right);
 
     cl::Event evCopiedSpins;
-    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buffSpins_size, spins, NULL, &evCopiedSpins);
+    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buff_size, spins, NULL, &evCopiedSpins);
     cl::Event evCopiedUp_Down;
-    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buffUp_Down_size, up_down, NULL, &evCopiedUp_Down);
+    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buff_size, up_down, NULL, &evCopiedUp_Down);
     cl::Event evCopiedLeft_Right;
-    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buffLeft_Right_size, 
+    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buff_size, 
                               left_right, NULL, &evCopiedLeft_Right);
 
     cl::NDRange offset(0,0);
@@ -139,8 +141,8 @@ public:
     queue.enqueueNDRangeKernel(create_bonds_kernel, offset, globalSize, localSize,
                                 &kernelDependencies, &evExecutedKernel);
     std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-    queue.enqueueReadBuffer(buffUp_Down, CL_TRUE, 0, buffUp_Down_size, up_down, &copyBackDependencies);
-    queue.enqueueReadBuffer(buffLeft_Right, CL_TRUE, 0, buffLeft_Right_size, left_right); 
+    queue.enqueueReadBuffer(buffUp_Down, CL_TRUE, 0, buff_size, up_down, &copyBackDependencies);
+    queue.enqueueReadBuffer(buffLeft_Right, CL_TRUE, 0, buff_size, left_right); 
 
     /*
     for(unsigned y=0; y<n; y++){
@@ -176,20 +178,12 @@ public:
     });
 
     cl::Kernel kernel(program, "kernel_create_clusters");
-    size_t buffUp_Down_size = sizeof(int) * vector_size;
-    cl::Buffer buffUp_Down(context, CL_MEM_READ_ONLY, buffUp_Down_size);
-    size_t buffLeft_Right_size = sizeof(int) * vector_size;
-    cl::Buffer buffLeft_Right(context, CL_MEM_READ_ONLY, buffLeft_Right_size);
-    size_t buffCluster_size = sizeof(unsigned) * vector_size;
-    cl::Buffer buffCluster(context, CL_MEM_READ_WRITE, buffCluster_size);
     size_t buffFinished_size = sizeof(bool);
     cl::Buffer buffFinished(context, CL_MEM_WRITE_ONLY, buffFinished_size);
 
-    cl::Event evCopiedUp_Down;
-    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buffUp_Down_size, up_down, NULL, &evCopiedUp_Down);
-    cl::Event evCopiedLeft_Right;
-    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buffLeft_Right_size,
-                              left_right, NULL, &evCopiedLeft_Right);
+    queue.enqueueWriteBuffer(buffUp_Down, CL_TRUE, 0, buff_size, up_down);
+    queue.enqueueWriteBuffer(buffLeft_Right, CL_TRUE, 0, buff_size, left_right);
+    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, cluster);
 
     cl::NDRange offset(0,0);
     cl::NDRange globalSize(n,n);
@@ -199,6 +193,8 @@ public:
     kernel.setArg(0, n);
     kernel.setArg(1, buffUp_Down);
     kernel.setArg(2, buffLeft_Right);
+    kernel.setArg(3, buffClusters);
+    kernel.setArg(4, buffFinished);
 
     bool finished=false;
     unsigned diameter=0;
@@ -207,21 +203,12 @@ public:
       finished=true;
 
 
-      kernel.setArg(3, buffCluster);
-      kernel.setArg(4, buffFinished);
+      queue.enqueueWriteBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished);
 
-      cl::Event evCopiedCluster;
-      queue.enqueueWriteBuffer(buffCluster, CL_FALSE, 0, buffCluster_size, cluster, NULL, &evCopiedCluster);
-      cl::Event evCopiedFinished;
-      queue.enqueueWriteBuffer(buffFinished, CL_FALSE, 0, buffFinished_size, &finished, NULL, &evCopiedFinished);
-
-      std::vector<cl::Event> kernelDependencies{evCopiedUp_Down, evCopiedLeft_Right, 
-                                                evCopiedCluster, evCopiedFinished};
       cl::Event evExecutedKernel;
-      queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, &kernelDependencies, &evExecutedKernel);
+      queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
       std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-      queue.enqueueReadBuffer(buffCluster, CL_TRUE, 0, buffCluster_size, cluster, &copyBackDependencies);
-      queue.enqueueReadBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished);
+      queue.enqueueReadBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished, &copyBackDependencies);
 
 
       /*
@@ -249,6 +236,7 @@ public:
       }
       */
     }
+    queue.enqueueReadBuffer(buffClusters, CL_TRUE, 0, buff_size, cluster);
     log->LogVerbose("    diameter %u", diameter);
   }
 
@@ -259,15 +247,9 @@ public:
     cl::Kernel kernel(program, "kernel_flip_clusters");
 
     unsigned vector_size=n*n;
-    size_t buffClusters_size = sizeof(unsigned) * vector_size;
-    cl::Buffer buffClusters(context, CL_MEM_READ_ONLY, buffClusters_size);
-    size_t buffSpins_size = sizeof(int) * vector_size;
-    cl::Buffer buffSpins(context, CL_MEM_WRITE_ONLY, buffSpins_size);
 
-    cl::Event evClustersCopied;
-    queue.enqueueWriteBuffer(buffClusters, CL_FALSE, 0, buffClusters_size, clusters, NULL, &evClustersCopied);
-    cl::Event evSpinsCopied;
-    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buffSpins_size, spins, NULL, &evSpinsCopied);
+    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, clusters);
+    queue.enqueueWriteBuffer(buffSpins, CL_TRUE, 0, buff_size, spins);
 
     cl::NDRange offset(0);
     cl::NDRange globalSize(vector_size);
@@ -278,11 +260,10 @@ public:
     kernel.setArg(2, buffClusters);
     kernel.setArg(3, buffSpins);
 
-    std::vector<cl::Event> kernelDependencies{evClustersCopied, evSpinsCopied};
     cl::Event evExecutedKernel;
-    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, &kernelDependencies, &evExecutedKernel);
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
     std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-    queue.enqueueReadBuffer(buffSpins, CL_TRUE, 0, buffSpins_size, spins, &copyBackDependencies);
+    queue.enqueueReadBuffer(buffSpins, CL_TRUE, 0, buff_size, spins, &copyBackDependencies);
 
     /*
     for(unsigned i=0; i<n*n; i++){
@@ -294,6 +275,7 @@ public:
     */
   }
 
+  
   void count_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
                           const unsigned *clusters, unsigned *counts, unsigned &nClusters) const
   {
@@ -309,29 +291,22 @@ public:
 
     nClusters=0;
     size_t buff_size = sizeof(unsigned) * n*n;
-    cl::Buffer buffClusters(context, CL_MEM_READ_ONLY, buff_size);
-    cl::Buffer buffCounts(context, CL_MEM_READ_ONLY, buff_size);
     cl::Buffer buffNClusters(context, CL_MEM_WRITE_ONLY, sizeof(unsigned));
 
     kernel.setArg(0, buffClusters);
     kernel.setArg(1, buffCounts);
     kernel.setArg(2, buffNClusters);
 
-    cl::Event evCopiedClusters;
-    queue.enqueueWriteBuffer(buffClusters, CL_FALSE, 0, buff_size, clusters, NULL, &evCopiedClusters);
-    cl::Event evCopiedCounts;
-    queue.enqueueWriteBuffer(buffCounts, CL_FALSE, 0, buff_size, counts, NULL, &evCopiedCounts);
-    cl::Event evCopiedNClusters;
-    queue.enqueueWriteBuffer(buffNClusters, CL_FALSE, 0, sizeof(unsigned), &nClusters, NULL, &evCopiedNClusters);
+    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, clusters);
+    queue.enqueueWriteBuffer(buffCounts, CL_TRUE, 0, buff_size, counts);
+    queue.enqueueWriteBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters);
     
     cl::NDRange offset(0);
     cl::NDRange globalSize(n*n);
     cl::NDRange localSize=cl::NullRange;
 
-    std::vector<cl::Event> kernelDependencies{evCopiedClusters, evCopiedCounts, evCopiedNClusters};
     cl::Event evExecutedKernel;
-    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize,
-                                &kernelDependencies, &evExecutedKernel);
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
     std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
     queue.enqueueReadBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters, &copyBackDependencies);
 
@@ -357,6 +332,7 @@ public:
 	{
       log->LogInfo("Building world");
       unsigned n=pInput->n;
+      vector_size=n*n;
       uint32_t prob=pInput->prob;
       uint32_t seed=pInput->seed;
       std::vector<int> spins(n*n);
@@ -364,6 +340,7 @@ public:
       std::vector<int> up_down(n*n);
       std::vector<unsigned> clusters(n*n);
       std::vector<unsigned> counts(n*n, 0);
+      vector_size=n*n;
       for(unsigned i=0; i<n*n; i++){
         spins[i]=hrng(seed, rng_group_init, 0, i) & 1;
       }
@@ -371,6 +348,14 @@ public:
       log->LogInfo("Doing iterations");
       std::vector<uint32_t> stats(n);
 
+      //Create Buffers
+      buff_size = sizeof(int) * vector_size;
+      buffSpins = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
+      buffLeft_Right = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
+      buffUp_Down = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
+      buffClusters = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
+      buffCounts = cl::Buffer(context, CL_MEM_READ_ONLY, buff_size);
+      
       for(unsigned i=0; i<n; i++){
         log->LogVerbose("  Iteration %u", i);
         create_bonds(log, n, seed, i, prob, &spins[0], &up_down[0], &left_right[0]);
