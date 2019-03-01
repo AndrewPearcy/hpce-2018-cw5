@@ -111,3 +111,9 @@ __constant __kernel void kernel_nClusters(__global unsigned *clusters,
     atomic_add(nClusters, (unsigned) 1);
   }
 }
+
+__constant __kernel void kernel_populateClusters(__global unsigned *clusters)
+{
+  unsigned i = get_global_id(0);
+  clusters[i] = i;
+}

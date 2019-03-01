@@ -35,7 +35,7 @@ public:
 
   cl::Program program;
   cl::Context context;
-  cl::CommandQueue queue;
+  mutable cl::CommandQueue queue;
 
   mutable cl::Buffer buffSpins;
   mutable cl::Buffer buffUp_Down;
@@ -106,8 +106,7 @@ public:
   }
 
   void create_bonds(ILog *log, unsigned n, uint32_t seed, 
-                    unsigned step,  uint32_t prob, 
-                    const int *spins, int *up_down, int *left_right) const 
+                    unsigned step,  uint32_t prob) const 
   {
     log->LogVerbose("  create_bonds %u", step);
 
@@ -123,26 +122,14 @@ public:
     create_bonds_kernel.setArg(5, buffUp_Down);
     create_bonds_kernel.setArg(6, buffLeft_Right);
 
-    cl::Event evCopiedSpins;
-    queue.enqueueWriteBuffer(buffSpins, CL_FALSE, 0, buff_size, spins, NULL, &evCopiedSpins);
-    cl::Event evCopiedUp_Down;
-    queue.enqueueWriteBuffer(buffUp_Down, CL_FALSE, 0, buff_size, up_down, NULL, &evCopiedUp_Down);
-    cl::Event evCopiedLeft_Right;
-    queue.enqueueWriteBuffer(buffLeft_Right, CL_FALSE, 0, buff_size, 
-                              left_right, NULL, &evCopiedLeft_Right);
-
+    
     cl::NDRange offset(0,0);
     cl::NDRange globalSize(n,n);
     cl::NDRange localSize=cl::NullRange;
     
 
-    std::vector<cl::Event> kernelDependencies{evCopiedSpins, evCopiedUp_Down, evCopiedLeft_Right};
-    cl::Event evExecutedKernel;
-    queue.enqueueNDRangeKernel(create_bonds_kernel, offset, globalSize, localSize,
-                                &kernelDependencies, &evExecutedKernel);
-    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-    queue.enqueueReadBuffer(buffUp_Down, CL_TRUE, 0, buff_size, up_down, &copyBackDependencies);
-    queue.enqueueReadBuffer(buffLeft_Right, CL_TRUE, 0, buff_size, left_right); 
+    queue.enqueueNDRangeKernel(create_bonds_kernel, offset, globalSize, localSize);
+    queue.enqueueBarrierWithWaitList();
 
     /*
     for(unsigned y=0; y<n; y++){
@@ -167,23 +154,23 @@ public:
     */
   }
 
-  void create_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
-                        const int *up_down, const int *left_right, unsigned *cluster) const
+  void create_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step) const
   {
     log->LogVerbose("  create_clusters %u", step);
 
-    unsigned vector_size=n*n;
-    tbb::parallel_for((unsigned) 0, vector_size, [&](unsigned i){
-      cluster[i]=i;
-    });
+    cl::Kernel populateKernel(program, "kernel_populateClusters");
+
+    cl::NDRange populateOffset(0);
+    cl::NDRange populateGlobalSize(vector_size);
+    cl::NDRange populateLocalSize;
+
+    populateKernel.setArg(0, buffClusters);
+    queue.enqueueNDRangeKernel(populateKernel, populateOffset, populateGlobalSize, populateLocalSize);
+    queue.enqueueBarrierWithWaitList();
 
     cl::Kernel kernel(program, "kernel_create_clusters");
     size_t buffFinished_size = sizeof(bool);
     cl::Buffer buffFinished(context, CL_MEM_WRITE_ONLY, buffFinished_size);
-
-    queue.enqueueWriteBuffer(buffUp_Down, CL_TRUE, 0, buff_size, up_down);
-    queue.enqueueWriteBuffer(buffLeft_Right, CL_TRUE, 0, buff_size, left_right);
-    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, cluster);
 
     cl::NDRange offset(0,0);
     cl::NDRange globalSize(n,n);
@@ -205,10 +192,9 @@ public:
 
       queue.enqueueWriteBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished);
 
-      cl::Event evExecutedKernel;
-      queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
-      std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-      queue.enqueueReadBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished, &copyBackDependencies);
+      queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize);
+      queue.enqueueBarrierWithWaitList();
+      queue.enqueueReadBuffer(buffFinished, CL_TRUE, 0, buffFinished_size, &finished);
 
 
       /*
@@ -236,20 +222,17 @@ public:
       }
       */
     }
-    queue.enqueueReadBuffer(buffClusters, CL_TRUE, 0, buff_size, cluster);
+    //queue.enqueueReadBuffer(buffClusters, CL_TRUE, 0, buff_size, cluster);
     log->LogVerbose("    diameter %u", diameter);
   }
 
-  void flip_clusters(ILog *log, unsigned n, uint32_t seed, unsigned step, unsigned *clusters, int *spins) const
+  void flip_clusters(ILog *log, unsigned n, uint32_t seed, unsigned step) const
   {
     log->LogVerbose("  flip_clusters %u", step);
 
     cl::Kernel kernel(program, "kernel_flip_clusters");
 
     unsigned vector_size=n*n;
-
-    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, clusters);
-    queue.enqueueWriteBuffer(buffSpins, CL_TRUE, 0, buff_size, spins);
 
     cl::NDRange offset(0);
     cl::NDRange globalSize(vector_size);
@@ -260,10 +243,8 @@ public:
     kernel.setArg(2, buffClusters);
     kernel.setArg(3, buffSpins);
 
-    cl::Event evExecutedKernel;
-    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
-    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-    queue.enqueueReadBuffer(buffSpins, CL_TRUE, 0, buff_size, spins, &copyBackDependencies);
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize);
+    queue.enqueueBarrierWithWaitList();
 
     /*
     for(unsigned i=0; i<n*n; i++){
@@ -277,7 +258,7 @@ public:
 
   
   void count_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
-                          const unsigned *clusters, unsigned *counts, unsigned &nClusters) const
+                        unsigned *counts, unsigned &nClusters) const
   {
     log->LogVerbose("  count_clusters %u", step);
 
@@ -297,7 +278,6 @@ public:
     kernel.setArg(1, buffCounts);
     kernel.setArg(2, buffNClusters);
 
-    queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, clusters);
     queue.enqueueWriteBuffer(buffCounts, CL_TRUE, 0, buff_size, counts);
     queue.enqueueWriteBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters);
     
@@ -305,10 +285,9 @@ public:
     cl::NDRange globalSize(n*n);
     cl::NDRange localSize=cl::NullRange;
 
-    cl::Event evExecutedKernel;
-    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize, NULL, &evExecutedKernel);
-    std::vector<cl::Event> copyBackDependencies(1, evExecutedKernel);
-    queue.enqueueReadBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters, &copyBackDependencies);
+    queue.enqueueNDRangeKernel(kernel, offset, globalSize, localSize);
+    queue.enqueueBarrierWithWaitList();
+    queue.enqueueReadBuffer(buffNClusters, CL_TRUE, 0, sizeof(unsigned), &nClusters);
 
     /*
     for(unsigned i=0; i<n*n; i++){
@@ -355,13 +334,18 @@ public:
       buffUp_Down = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
       buffClusters = cl::Buffer(context, CL_MEM_READ_WRITE, buff_size);
       buffCounts = cl::Buffer(context, CL_MEM_READ_ONLY, buff_size);
-      
+
+      queue.enqueueWriteBuffer(buffSpins, CL_TRUE, 0, buff_size, &spins[0]);
+      queue.enqueueWriteBuffer(buffUp_Down, CL_TRUE, 0, buff_size, &up_down[0]);
+      queue.enqueueWriteBuffer(buffLeft_Right, CL_TRUE, 0, buff_size, &left_right[0]);
+      queue.enqueueWriteBuffer(buffClusters, CL_TRUE, 0, buff_size, &clusters[0]);
+
       for(unsigned i=0; i<n; i++){
         log->LogVerbose("  Iteration %u", i);
-        create_bonds(log, n, seed, i, prob, &spins[0], &up_down[0], &left_right[0]);
-        create_clusters(log,  n, seed, i, &up_down[0], &left_right[0], &clusters[0]);
-        flip_clusters(log,  n, seed, i, &clusters[0], &spins[0]);
-        count_clusters(log,  n, seed, i, &clusters[0], &counts[0], stats[i]);
+        create_bonds(log, n, seed, i, prob);
+        create_clusters(log,  n, seed, i);
+        flip_clusters(log,  n, seed, i);
+        count_clusters(log,  n, seed, i, &counts[0], stats[i]);
         log->LogVerbose("  clusters count is %u", stats[i]);
 
         log->Log( Log_Debug, [&](std::ostream &dst){
