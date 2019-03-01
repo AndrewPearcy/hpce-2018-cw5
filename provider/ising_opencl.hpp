@@ -341,9 +341,9 @@ public:
       std::vector<unsigned> clusters(n*n);
       std::vector<unsigned> counts(n*n, 0);
       vector_size=n*n;
-      for(unsigned i=0; i<n*n; i++){
+      tbb::parallel_for((unsigned long) 0, vector_size, [&](unsigned i){
         spins[i]=hrng(seed, rng_group_init, 0, i) & 1;
-      }
+      });
 
       log->LogInfo("Doing iterations");
       std::vector<uint32_t> stats(n);
