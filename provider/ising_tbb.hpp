@@ -12,6 +12,99 @@ public:
   IsingTbbProvider()
   {}
 
+  void create_bonds(ILog *log, unsigned n, uint32_t seed, unsigned step,  
+                    uint32_t prob, const int *spins, int *up_down, int *left_right) const
+  {
+    log->LogVerbose("  create_bonds %u", step);
+    tbb::parallel_for((unsigned) 0, n, [&](unsigned y){
+      tbb::parallel_for((unsigned) 0, n, [&](unsigned x){
+        bool sC=spins[y*n+x];
+        
+        bool sU=spins[ ((y+1)%n)*n + x ];
+        if(sC!=sU){
+          up_down[y*n+x]=0;
+        }else{
+          up_down[y*n+x]=hrng(seed, rng_group_bond_ud, step, y*n+x) < prob;
+        }
+
+        bool sR=spins[ y*n + (x+1)%n ];
+        if(sC!=sR){
+          left_right[y*n+x]=0;
+        }else{
+          left_right[y*n+x]=hrng(seed, rng_group_bond_lr, step, y*n+x) < prob;
+        }
+      });
+    });
+  }
+
+
+  void create_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, 
+                        const int *up_down, const int *left_right, unsigned *cluster) const
+  {
+    log->LogVerbose("  create_clusters %u", step);
+
+    tbb::parallel_for((unsigned) 0, n*n, [&](unsigned i){
+      cluster[i]=i;
+    });
+
+    bool finished=false;
+    unsigned diameter=0;
+    while(!finished){
+      diameter++;
+      finished=true;
+      tbb::parallel_for((unsigned) 0, n, [&](unsigned y){
+        tbb::parallel_for((unsigned) 0, n, [&](unsigned x){
+          unsigned prev=cluster[y*n+x];
+          unsigned curr=prev;
+          if(left_right[y*n+x]){
+            curr=std::min(curr, cluster[y*n+(x+1)%n]);
+          }
+          if(left_right[y*n+(x+n-1)%n]){
+            curr=std::min(curr, cluster[y*n+(x+n-1)%n]);
+          }
+          if(up_down[y*n+x]){
+            curr=std::min(curr, cluster[ ((y+1)%n)*n+x]);
+          }
+          if(up_down[((y+n-1)%n)*n+x]){
+            curr=std::min(curr, cluster[ ((y+n-1)%n)*n+x]);
+          }
+          if(curr!=prev){
+            cluster[y*n+x]=curr;
+            finished=false;
+          }
+        });
+      });
+    }
+    log->LogVerbose("    diameter %u", diameter);
+  }
+
+  void flip_clusters(ILog *log, unsigned n, uint32_t seed, unsigned step, unsigned *clusters, int *spins) const
+  {
+    log->LogVerbose("  flip_clusters %u", step);
+
+    tbb::parallel_for((unsigned) 0, n*n, [&](unsigned i){
+      unsigned cluster=clusters[i];
+      if(hrng(seed, rng_group_flip, step, cluster) >> 31){
+        spins[i] ^= 1;
+      }
+    });
+  }
+
+  void count_clusters(ILog *log, unsigned n, uint32_t /*seed*/, unsigned step, const unsigned *clusters, unsigned *counts, unsigned &nClusters) const
+  {
+    log->LogVerbose("  count_clusters %u", step);
+
+    tbb::parallel_for((unsigned) 0, n*n, [&](unsigned i){
+      counts[i]=0;
+    });
+
+    nClusters=0;
+    for(unsigned i=0; i<n*n; i++){
+      nClusters += !counts[clusters[i]]++ ? 1 : 0;
+    }
+
+  }
+
 	virtual void Execute(
 			   puzzler::ILog *log,
 			   const puzzler::IsingInput *pInput,
@@ -35,7 +128,7 @@ public:
       log->LogInfo("Doing iterations");
       std::vector<uint32_t> stats(n);
 
-      tbb::parallel_for((unsigned) 0, n, [&](unsigned i){
+      for(unsigned i = 0; i < n; i++){
         log->LogVerbose("  Iteration %u", i);
         create_bonds(   log, n, seed, i, prob, &spins[0], 
                         &up_down[0], &left_right[0]);
@@ -54,7 +147,7 @@ public:
             dst<<"\n";
           }
         });
-      });
+      }
       
       pOutput->history=stats;
       log->LogInfo("Finished");
