@@ -74,7 +74,7 @@ void decompose(ILog *log, unsigned rr, unsigned cc, unsigned p, uint32_t *matrix
 
           tbb::parallel_for((unsigned) rank+1, rr, [&](unsigned r2){
             unsigned count=at(r2, c1);
-            for(unsigned c2=0; c2<cc; c2++){
+            for(unsigned c2=c1; c2<cc; c2++){
               at(r2,c2) = sub( at(r2,c2) , mul( count, at(rank,c2)) );
             }
           });
