@@ -53,12 +53,13 @@ public:
         next[i]=0;
       });
       std::vector<tbb::atomic<float>> atomic_next(n, 0.0f);
-      for(unsigned i=0; i<n; i++){
-        for(unsigned j=0; j<edges[i].size(); j++){
+      //for(unsigned i=0; i<n; i++){
+      tbb::parallel_for((unsigned) 0, n, [&](unsigned i){  
+	for(unsigned j=0; j<edges[i].size(); j++){
           int dst=edges[i][j];
           atomic_next[dst] = atomic_next[dst] + (current[i] / edges[i].size());
         }
-      }
+      });
 
       tbb::parallel_for((unsigned) 0, n, [&](unsigned i) {
         next[i] = atomic_next[i].load(); 
